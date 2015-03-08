@@ -66,6 +66,7 @@ func (b *BuilderJob) CmdBuild(job *engine.Job) error {
 		authConfig     = &registry.AuthConfig{}
 		configFile     = &registry.ConfigFile{}
 		buildEnv       = []string{}
+		buildVars      = []string{}
 		tag            string
 		context        io.ReadCloser
 	)
@@ -73,6 +74,7 @@ func (b *BuilderJob) CmdBuild(job *engine.Job) error {
 	job.GetenvJson("authConfig", authConfig)
 	job.GetenvJson("configFile", configFile)
 	buildEnv = job.GetenvList("buildEnv")
+	buildVars = job.GetenvList("buildVars")
 
 	repoName, tag = parsers.ParseRepositoryTag(repoName)
 	if repoName != "" {
@@ -159,6 +161,7 @@ func (b *BuilderJob) CmdBuild(job *engine.Job) error {
 		memorySwap:      memorySwap,
 		cancelled:       job.WaitCancelled(),
 		BuildEnv:        buildEnv,
+		BuildVars:       buildVars,
 	}
 
 	id, err := builder.Run(context)
