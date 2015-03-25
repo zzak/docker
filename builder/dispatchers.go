@@ -257,13 +257,24 @@ func run(b *Builder, args []string, attributes map[string]bool, original string)
 		return err
 	}
 
+	// stash the cmd
 	cmd := b.Config.Cmd
-	// set Cmd manually, this is special case only for Dockerfiles
-	b.Config.Cmd = config.Cmd
 	runconfig.Merge(b.Config, config)
-	// set build-time environment for 'run'. We let dockerfile
-	// environment override build-time environment.
+	// stash the config environment
 	env := b.Config.Env
+
+	defer func(cmd []string) { b.Config.Cmd = cmd }(cmd)
+	defer func(env []string) { b.Config.Env = env }(env)
+
+	// derive the net build-time environment for this run. We let config
+	// environment override the build time environment.
+	// We don't persist the build time environment with container's config
+	// environment, but just sort and pre-pend it to the command string at time
+	// of commit.
+	// This helps with tracing back the image's actual environment at the time
+	// of RUN, without leaking it to the final image. It also aids cache
+	// lookup for same image built with same build time environment.
+	cmdBuildEnv := []string{}
 	for _, bldEnv := range b.BuildEnv {
 		found := false
 		bldEnvKey := strings.Split(bldEnv, "=")[0]
@@ -274,16 +285,21 @@ func run(b *Builder, args []string, attributes map[string]bool, original string)
 			}
 		}
 		if !found {
-			b.Config.Env = append(b.Config.Env, bldEnv)
+			cmdBuildEnv = append(cmdBuildEnv, bldEnv)
 		}
 	}
 
-	defer func(cmd []string) { b.Config.Cmd = cmd }(cmd)
-	defer func(env []string) { b.Config.Env = env }(env)
-
 	logrus.Debugf("[BUILDER] Command to be executed: %v", b.Config.Cmd)
 	logrus.Debugf("[BUILDER] Environment (applied in order): %v", b.Config.Env)
+	// derive the command to use for probeCache() and to commit in this container
+	saveCmd := config.Cmd
+	if len(cmdBuildEnv) > 0 {
+		sort.Strings(cmdBuildEnv)
+		tmpEnv := append([]string{fmt.Sprintf("|%d", len(cmdBuildEnv))}, cmdBuildEnv...)
+		saveCmd = append(tmpEnv, saveCmd...)
+	}
 
+	b.Config.Cmd = saveCmd
 	hit, err := b.probeCache()
 	if err != nil {
 		return err
@@ -291,6 +307,14 @@ func run(b *Builder, args []string, attributes map[string]bool, original string)
 	if hit {
 		return nil
 	}
+
+	// set Cmd manually, this is special case only for Dockerfiles
+	b.Config.Cmd = config.Cmd
+	// set build-time environment for 'run'.
+	b.Config.Env = append(b.Config.Env, cmdBuildEnv...)
+
+	log.Debugf("[BUILDER] Command to be executed: %v", b.Config.Cmd)
+	log.Debugf("[BUILDER] Environment (applied in order): %v", b.Config.Env)
 
 	c, err := b.create()
 	if err != nil {
@@ -306,8 +330,10 @@ func run(b *Builder, args []string, attributes map[string]bool, original string)
 	if err != nil {
 		return err
 	}
-	// revert to original config, we don't persist build time environment
+
+	// revert to original config environment and set the command string to commit
 	b.Config.Env = env
+	b.Config.Cmd = saveCmd
 	if err := b.commit(c.ID, cmd, "run"); err != nil {
 		return err
 	}
