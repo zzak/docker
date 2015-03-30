@@ -313,8 +313,8 @@ func run(b *Builder, args []string, attributes map[string]bool, original string)
 	// set build-time environment for 'run'.
 	b.Config.Env = append(b.Config.Env, cmdBuildEnv...)
 
-	log.Debugf("[BUILDER] Command to be executed: %v", b.Config.Cmd)
-	log.Debugf("[BUILDER] Environment (applied in order): %v", b.Config.Env)
+	logrus.Debugf("[BUILDER] Command to be executed: %v", b.Config.Cmd)
+	logrus.Debugf("[BUILDER] Environment (applied in order): %v", b.Config.Env)
 
 	c, err := b.create()
 	if err != nil {
