@@ -54,8 +54,12 @@ func (cli *DockerCli) CmdBuild(args ...string) error {
 	dockerfileName := cmd.String([]string{"f", "-file"}, "", "Name of the Dockerfile (Default is 'PATH/Dockerfile')")
 	flMemoryString := cmd.String([]string{"m", "-memory"}, "", "Memory limit")
 	flMemorySwap := cmd.String([]string{"-memory-swap"}, "", "Total memory (memory + swap), '-1' to disable swap")
-	flCPUShares := cmd.Int64([]string{"c", "-cpu-shares"}, 0, "CPU shares (relative weight)")
-	flCPUSetCpus := cmd.String([]string{"-cpuset-cpus"}, "", "CPUs in which to allow execution (0-3, 0,1)")
+	flCpuShares := cmd.Int64([]string{"c", "-cpu-shares"}, 0, "CPU shares (relative weight)")
+	flCpuSetCpus := cmd.String([]string{"-cpuset-cpus"}, "", "CPUs in which to allow execution (0-3, 0,1)")
+	flEnv := opts.NewListOpts(opts.ValidateEnv)
+	flEnvFile := opts.NewListOpts(nil)
+	cmd.Var(&flEnv, []string{"-build-env"}, "Set build-time environment variables")
+	cmd.Var(&flEnvFile, []string{"-build-env-file"}, "Read in a file of build-time environment variables")
 
 	cmd.Require(flag.Exact, 1)
 	cmd.ParseFlags(args, true)
@@ -292,6 +296,23 @@ func (cli *DockerCli) CmdBuild(args ...string) error {
 		return err
 	}
 	headers.Add("X-Registry-Config", base64.URLEncoding.EncodeToString(buf))
+
+	// collect all the build-time environment variables for the container
+	envVariables := []string{}
+	for _, ef := range flEnvFile.GetAll() {
+		parsedVars, err := opts.ParseEnvFile(ef)
+		if err != nil {
+			return err
+		}
+		envVariables = append(envVariables, parsedVars...)
+	}
+	// parse the '--build-env' after, to allow override the env-file
+	envVariables = append(envVariables, flEnv.GetAll()...)
+	buf, err = json.Marshal(envVariables)
+	if err != nil {
+		return err
+	}
+	headers.Add("X-BuildEnv", base64.URLEncoding.EncodeToString(buf))
 
 	if context != nil {
 		headers.Set("Content-Type", "application/tar")

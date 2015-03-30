@@ -65,12 +65,14 @@ func (b *BuilderJob) CmdBuild(job *engine.Job) error {
 		cpuSetCpus     = job.Getenv("cpusetcpus")
 		authConfig     = &registry.AuthConfig{}
 		configFile     = &registry.ConfigFile{}
+		buildEnv       = []string{}
 		tag            string
 		context        io.ReadCloser
 	)
 
 	job.GetenvJson("authConfig", authConfig)
 	job.GetenvJson("configFile", configFile)
+	buildEnv = job.GetenvList("buildEnv")
 
 	repoName, tag = parsers.ParseRepositoryTag(repoName)
 	if repoName != "" {
@@ -156,6 +158,7 @@ func (b *BuilderJob) CmdBuild(job *engine.Job) error {
 		memory:          memory,
 		memorySwap:      memorySwap,
 		cancelled:       job.WaitCancelled(),
+		BuildEnv:        buildEnv,
 	}
 
 	id, err := builder.Run(context)
